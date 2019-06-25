@@ -42,19 +42,24 @@
 #include "usart.h"
 #include "gpio.h"
 
-
 /* USER CODE BEGIN Includes */
 #include "phone_no.h"
+//add your phone number like this:
+//#define PHONE_NO "+380123456789"
+
 #include "UART_Buffer.h"
 #include <string.h>
 /* USER CODE END Includes */
+
+/* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 #define AT_PROTOCOL_DELAY 200
 #define AT_PROTOCOL_RETRY 6
 #define AT_ANSWER_LENGTH_MAX 16
-//#define SLEEP_ENABLED
+#define SLEEP_ENABLED
+#define SEND_SMS
 
 volatile uint32_t flags_reg = 0;
 enum {
@@ -127,6 +132,7 @@ uint8_t AT_expected_received(uint8_t* expected_command){
 }
 
 uint8_t send_SMS(uint8_t* text, uint8_t length){
+#ifdef SEND_SMS
 	uint8_t command0[] = "AT+CGREG?\r";
 	uint8_t command1[] = "AT+CMGF=1\r";
 	uint8_t command2[] = "AT+CMGS=\""PHONE_NO"\"\r";
@@ -176,8 +182,10 @@ uint8_t send_SMS(uint8_t* text, uint8_t length){
 	HAL_GPIO_WritePin(GPIOA, GSM_POW_EN_Pin, GPIO_PIN_RESET);
 	return 1;
 
+#endif
 sending_failed:
 	HAL_GPIO_WritePin(GPIOA, GSM_POW_EN_Pin, GPIO_PIN_RESET);
+
 	return 0;
 
 	//uint8_t lol[] = "AT+sfdgsdfgsdfgsdfgsdghjgvjhgfxcbxcv\r";
@@ -237,39 +245,59 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //GPIO_PinState PIR_state = HAL_GPIO_ReadPin (PIR_SIGNAL_GPIO_Port, PIR_SIGNAL_Pin);
-	  //HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, PIR_state);
-
-	  //HAL_Delay(500);
-	  //HAL_GPIO_TogglePin(GPIOA, DBG_LED_Pin);
-
-	  if(flags_reg & 1<<USR_BTN_PRESSED){
-		  uint8_t my_text[] = "TEST1";
-		  send_SMS(my_text, strlen(my_text));
-		  flags_reg &= ~(1<<USR_BTN_PRESSED);
+	  if(flags_reg & 1<<ARMED_STATE){
+		  if(flags_reg & 1<<USR_BTN_PRESSED){
+			  flags_reg &= ~(1<<ARMED_STATE);
+			  flags_reg &= ~(1<<PIR_SIGNAL_DETECTED);
+			  flags_reg &= ~(1<<USB_VBUS_TOGGLED);
+			  flags_reg &= ~(1<<USR_BTN_PRESSED);
+			  for(uint8_t i = 0; i<4; i++){
+				  HAL_GPIO_TogglePin(GPIOA, DBG_LED_Pin);
+				  HAL_Delay(1000);
+			  }
+			  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_RESET);
+		  }
+		  if(flags_reg & 1<<PIR_SIGNAL_DETECTED){
+			  uint8_t my_text[] = "MOTION DETECTED!!!";
+			  send_SMS(my_text, strlen(my_text));
+			  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_SET);
+			  while(HAL_GPIO_ReadPin(PIR_SIGNAL_GPIO_Port, PIR_SIGNAL_Pin)){}
+			  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_RESET);
+			  flags_reg &= ~(1<<PIR_SIGNAL_DETECTED);
+		  }
+		  if(flags_reg & 1<<USB_VBUS_TOGGLED){
+			  uint8_t text_on[] = "USB +5V turned on, charging";
+			  uint8_t text_off[] = "USB +5V turned off, battery operation";
+			  HAL_Delay(50);
+			  if(HAL_GPIO_ReadPin(VBUS_DET_GPIO_Port, VBUS_DET_Pin)){
+				  send_SMS(text_on, strlen(text_on));
+			  }
+			  else{
+				  send_SMS(text_off, strlen(text_off));
+			  }
+			  flags_reg &= ~(1<<USB_VBUS_TOGGLED);
+		  }
 	  }
-	  if(flags_reg & 1<<PIR_SIGNAL_DETECTED){
-		  //uint8_t my_text[] = "MOTION DETECTED!!!";
-		  //send_SMS(my_text, strlen(my_text));
-		  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_SET);
-		  while(HAL_GPIO_ReadPin(PIR_SIGNAL_GPIO_Port, PIR_SIGNAL_Pin)){}
-		  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_RESET);
-		  flags_reg &= ~(1<<PIR_SIGNAL_DETECTED);
-	  }
-	  if(flags_reg & 1<<USB_VBUS_TOGGLED){
-		  //uint8_t my_text[] = "MOTION DETECTED!!!";
-		  //send_SMS(my_text, strlen(my_text));
-		  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_SET);
-		  while(HAL_GPIO_ReadPin(PIR_SIGNAL_GPIO_Port, PIR_SIGNAL_Pin)){}
-		  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_RESET);
-		  flags_reg &= ~(1<<USB_VBUS_TOGGLED);
+	  else{
+		  if(flags_reg & 1<<USR_BTN_PRESSED){
+			  flags_reg |= 1<<ARMED_STATE;
+			  flags_reg &= ~(1<<PIR_SIGNAL_DETECTED);
+			  flags_reg &= ~(1<<USB_VBUS_TOGGLED);
+			  flags_reg &= ~(1<<USR_BTN_PRESSED);
+			  for(uint8_t i = 0; i<32; i++){
+				  HAL_GPIO_TogglePin(GPIOA, DBG_LED_Pin);
+				  HAL_Delay(50);
+			  }
+			  HAL_GPIO_WritePin(GPIOA, DBG_LED_Pin, GPIO_PIN_RESET);
+		  }
 	  }
 
-	#ifdef SLEEP_ENABLED
+	  #ifdef SLEEP_ENABLED
 	  HAL_SuspendTick();
 	  //HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 	  HAL_PWR_EnterSTOPMode(PWR_MAINREGULATOR_ON, PWR_STOPENTRY_WFI);
-	#endif
+	  #endif
+
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */

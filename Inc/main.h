@@ -65,6 +65,7 @@
 #define PIR_SIGNAL_EXTI_IRQn EXTI4_15_IRQn
 #define VBUS_DET_Pin GPIO_PIN_10
 #define VBUS_DET_GPIO_Port GPIOA
+#define VBUS_DET_EXTI_IRQn EXTI4_15_IRQn
 
 /* ########################## Assert Selection ############################## */
 /**
